@@ -1,0 +1,322 @@
+service: smart-parts-backend
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  environment:
+    STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    USERS_TABLE: ${self:service}-${self:provider.stage}-users
+    PARTS_TABLE: ${self:service}-${self:provider.stage}-parts
+    INVENTORY_TABLE: ${self:service}-${self:provider.stage}-inventory
+    CARTS_TABLE: ${self:service}-${self:provider.stage}-carts
+    ORDERS_TABLE: ${self:service}-${self:provider.stage}-orders
+    VEHICLES_TABLE: ${self:service}-${self:provider.stage}-vehicles
+    EVENT_BUS_NAME: default
+    COGNITO_ISSUER_URL: ${env:COGNITO_ISSUER_URL}
+    COGNITO_AUDIENCE: ${env:COGNITO_AUDIENCE}
+    STRIPE_SECRET_KEY: ${env:STRIPE_SECRET_KEY}
+    FRONTEND_BASE_URL: ${env:FRONTEND_BASE_URL}
+
+  httpApi:
+    cors: true
+    authorizers:
+      cognitoJwt:
+        identitySource: $request.header.Authorization
+        issuerUrl: ${self:provider.environment.COGNITO_ISSUER_URL}
+        audience:
+          - ${self:provider.environment.COGNITO_AUDIENCE}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource:
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.PARTS_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.INVENTORY_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARTS_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ORDERS_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:provider.environment.VEHICLES_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:provider.environment.ORDERS_TABLE}/index/*
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource: "*"
+
+functions:
+  # Public
+  listParts:
+    handler: src/parts/list.handler
+    events:
+      - httpApi:
+          path: /parts
+          method: get
+  getPart:
+    handler: src/parts/get.handler
+    events:
+      - httpApi:
+          path: /parts/{id}
+          method: get
+  getInventory:
+    handler: src/inventory/get.handler
+    events:
+      - httpApi:
+          path: /inventory/{sku}
+          method: get
+  listVehicles:
+    handler: src/vehicles/list.handler
+    events:
+      - httpApi:
+          path: /vehicles
+          method: GET
+  vehicleFacets:
+    handler: src/vehicles/facets.handler
+    events:
+      - httpApi:
+          path: /vehicles/facets
+          method: GET
+  # Customer (Cognito)
+  me:
+    handler: src/users/me.handler
+    events:
+      - httpApi:
+          path: /me
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  getCart:
+    handler: src/cart/get.handler
+    events:
+      - httpApi:
+          path: /cart
+          method: get
+          authorizer:
+            name: cognitoJwt
+  addCartItem:
+    handler: src/cart/addItem.handler
+    events:
+      - httpApi:
+          path: /cart/items
+          method: post
+          authorizer:
+            name: cognitoJwt
+  removeCartItem:
+    handler: src/cart/removeItem.handler
+    events:
+      - httpApi:
+          path: /cart/items/{sku}
+          method: delete
+          authorizer:
+            name: cognitoJwt
+  clearCart:
+    handler: src/cart/clear.handler
+    events:
+      - httpApi:
+          path: /cart
+          method: delete
+          authorizer:
+            name: cognitoJwt
+
+  createOrder:
+    handler: src/orders/create.handler
+    events:
+      - httpApi:
+          path: /orders
+          method: post
+          authorizer:
+            name: cognitoJwt
+  listOrders:
+    handler: src/orders/list.handler
+    events:
+      - httpApi:
+          path: /orders
+          method: get
+          authorizer:
+            name: cognitoJwt
+  getOrder:
+    handler: src/orders/get.handler
+    events:
+      - httpApi:
+          path: /orders/{id}
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  pay:
+    handler: src/payments/pay.handler
+    events:
+      - httpApi:
+          path: /payments/pay
+          method: post
+          authorizer:
+            name: cognitoJwt
+
+  # Admin CRUD for parts
+  adminCreatePart:
+    handler: src/admin/parts/create.handler
+    events:
+      - httpApi:
+          path: /admin/parts
+          method: post
+          authorizer:
+            name: cognitoJwt
+  adminUpdatePart:
+    handler: src/admin/parts/update.handler
+    events:
+      - httpApi:
+          path: /admin/parts/{id}
+          method: put
+          authorizer:
+            name: cognitoJwt
+  adminDeletePart:
+    handler: src/admin/parts/delete.handler
+    events:
+      - httpApi:
+          path: /admin/parts/{id}
+          method: delete
+          authorizer:
+            name: cognitoJwt
+
+  # Events (EventBridge)
+  onOrderCreated:
+    handler: src/inventory/onOrderCreated.handler
+    events:
+      - eventBridge:
+          pattern:
+            source:
+              - smartparts.orders
+            detail-type:
+              - OrderCreated
+
+  onPaymentSucceeded:
+    handler: src/orders/onPaymentSucceeded.handler
+    events:
+      - eventBridge:
+          pattern:
+            source:
+              - smartparts.payments
+            detail-type:
+              - PaymentSucceeded
+
+  notifyPaymentSucceeded:
+    handler: src/notifications/onPaymentSucceeded.handler
+    events:
+      - eventBridge:
+          pattern:
+            source:
+              - smartparts.payments
+            detail-type:
+              - PaymentSucceeded
+
+  createStripeCheckout:
+    handler: src/payments/createCheckout.handler
+    events:
+    - httpApi:
+          path: /payments/checkout
+          method: post
+          authorizer:
+            name: cognitoJwt
+  confirmStripeCheckout:
+    handler: src/payments/confirmCheckout.handler
+    events:
+    - httpApi:
+          path: /payments/confirm
+          method: post
+          authorizer:
+            name: cognitoJwt
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.USERS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+
+    PartsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.PARTS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: partId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: partId
+            KeyType: HASH
+
+    InventoryTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.INVENTORY_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: sku
+            AttributeType: S
+        KeySchema:
+          - AttributeName: sku
+            KeyType: HASH
+
+    CartsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CARTS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+
+    OrdersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.ORDERS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: orderId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: orderId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: byUser
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    VehiclesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.VEHICLES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: vehicleId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: vehicleId
+            KeyType: HASH

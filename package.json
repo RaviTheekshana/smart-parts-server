@@ -1,0 +1,19 @@
+{
+  "name": "smart-parts-backend-cognito-dynamodb",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "serverless deploy --stage dev --region us-east-1",
+    "remove": "serverless remove --stage dev --region us-east-1"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.983.0",
+    "@aws-sdk/client-eventbridge": "^3.540.0",
+    "@aws-sdk/lib-dynamodb": "^3.983.0",
+    "stripe": "^20.3.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "dotenv": "^17.2.3"
+  }
+}
