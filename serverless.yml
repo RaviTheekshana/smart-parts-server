@@ -1,6 +1,6 @@
 service: smart-parts-backend
-
 frameworkVersion: "3"
+useDotenv: true
 
 provider:
   name: aws
@@ -21,6 +21,11 @@ provider:
     COGNITO_AUDIENCE: ${env:COGNITO_AUDIENCE}
     STRIPE_SECRET_KEY: ${env:STRIPE_SECRET_KEY}
     FRONTEND_BASE_URL: ${env:FRONTEND_BASE_URL}
+    USER_POOL_ID: ${env:USER_POOL_ID}
+    ADMIN_GROUP: admin
+    CUSTOMER_GROUP: customer
+  tracing:
+    lambda: true
 
   httpApi:
     cors: true
@@ -33,6 +38,9 @@ provider:
 
   iam:
     role:
+      managedPolicies:
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AWSXrayFullAccess
       statements:
         - Effect: Allow
           Action:
@@ -53,9 +61,184 @@ provider:
         - Effect: Allow
           Action:
             - events:PutEvents
+            - cognito-idp:ListUsers
+            - cognito-idp:AdminGetUser
+            - cognito-idp:AdminCreateUser
+            - cognito-idp:AdminDeleteUser
+            - cognito-idp:AdminUpdateUserAttributes
+            - cognito-idp:AdminSetUserPassword
+            - cognito-idp:AdminAddUserToGroup
+            - cognito-idp:AdminRemoveUserFromGroup
+            - cognito-idp:AdminListGroupsForUser
           Resource: "*"
 
 functions:
+  adminListUsers:
+    handler: src/admin/users/list.handler
+    events:
+      - httpApi:
+          path: /admin/users
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  adminCreateUser:
+    handler: src/admin/users/create.handler
+    events:
+      - httpApi:
+          path: /admin/users
+          method: post
+          authorizer:
+            name: cognitoJwt
+
+  adminGetUser:
+    handler: src/admin/users/get.handler
+    events:
+      - httpApi:
+          path: /admin/users/{id}
+          method: get
+          authorizer:
+            name: cognitoJwt
+  
+  adminPatchUser:
+    handler: src/admin/users/patch.handler
+    events:
+      - httpApi:
+          path: /admin/users/{id}
+          method: patch
+          authorizer:
+            name: cognitoJwt
+  
+  adminDeleteUser:
+    handler: src/admin/users/delete.handler
+    events:
+      - httpApi:
+          path: /admin/users/{id}
+          method: delete
+          authorizer:
+            name: cognitoJwt
+
+  adminListOrders:
+    handler: src/admin/orders/list.handler
+    environment:
+      ORDERS_TABLE: ${self:provider.environment.ORDERS_TABLE}
+    events:
+      - httpApi:
+          method: GET
+          path: /admin/orders
+          authorizer:
+            name: cognitoJwt
+
+  adminGetOrder:
+    handler: src/admin/orders/get.handler
+    events:
+      - httpApi:
+          path: /admin/orders/{id}
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  adminPatchOrder:
+    handler: src/admin/orders/patch.handler
+    events:
+      - httpApi:
+          path: /admin/orders/{id}
+          method: patch
+          authorizer:
+            name: cognitoJwt
+  
+
+  adminListParts:
+    handler: src/admin/parts/list.handler
+    events:
+      - httpApi:
+          path: /admin/parts
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  adminGetPart:
+    handler: src/admin/parts/get.handler
+    events:
+      - httpApi:
+          path: /admin/parts/{id}
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  adminUpdateInventory:
+    handler: src/admin/inventory/update.handler
+    events:
+      - httpApi:
+          path: /admin/inventory/{sku}
+          method: put
+          authorizer:
+            name: cognitoJwt
+
+  adminCreateVehicle:
+    handler: src/admin/vehicles/create.handler
+    events:
+      - httpApi:
+          path: /admin/vehicles
+          method: post
+          authorizer:
+            name: cognitoJwt
+
+  adminUpdateVehicle:
+    handler: src/admin/vehicles/update.handler
+    events:
+      - httpApi:
+          path: /admin/vehicles/{id}
+          method: put
+          authorizer:
+            name: cognitoJwt
+
+  adminDeleteVehicle:
+    handler: src/admin/vehicles/delete.handler
+    events:
+      - httpApi:
+          path: /admin/vehicles/{id}
+          method: delete
+          authorizer:
+            name: cognitoJwt
+
+  adminListVehicles:
+    handler: src/admin/vehicles/list.handler
+    events:
+      - httpApi:
+          path: /admin/vehicles
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  adminGetVehicle:
+    handler: src/admin/vehicles/get.handler
+    events:
+      - httpApi:
+          path: /admin/vehicles/{id}
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  adminListInventory:
+    handler: src/admin/inventory/list.handler
+    events:
+      - httpApi:
+          path: /admin/inventory
+          method: get
+          authorizer:
+            name: cognitoJwt
+
+  adminDeleteInventory:
+    handler: src/admin/inventory/delete.handler
+    events:
+      - httpApi:
+          path: /admin/inventory/{sku}
+          method: delete
+          authorizer:
+            name: cognitoJwt
+ 
+
   # Public
   listParts:
     handler: src/parts/list.handler
@@ -237,6 +420,10 @@ functions:
           method: post
           authorizer:
             name: cognitoJwt
+
+  postConfirmationAddCustomer:
+    handler: src/auth/postConfirmationAddCustomer.handler
+
 
 resources:
   Resources:

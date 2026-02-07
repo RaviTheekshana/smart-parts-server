@@ -3,9 +3,6 @@ import { ddb, json, getUserContext } from "../../_shared/aws.js";
 import { v4 as uuidv4 } from "uuid";
 
 export async function handler(event) {
-  const ctx = getUserContext(event);
-  if (!ctx?.userId) return json(401, { message: "Unauthorized" });
-  if (!ctx.isAdmin) return json(403, { message: "Forbidden" });
 
   const body = event.body ? JSON.parse(event.body) : {};
   const sku = body.sku;

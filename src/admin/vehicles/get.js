@@ -1,0 +1,18 @@
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { ddb, json, getUserContext } from "../../_shared/aws.js";
+
+export async function handler(event) {
+  const id = event.pathParameters?.id;
+  if (!id) return json(400, { message: "Missing id" });
+
+  const out = await ddb.send(
+    new GetCommand({
+      TableName: process.env.VEHICLES_TABLE,
+      Key: { vehicleId: id },
+    })
+  );
+
+  if (!out.Item) return json(404, { message: "Vehicle not found" });
+
+  return json(200, { vehicle: out.Item });
+}
